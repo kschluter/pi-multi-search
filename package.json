@@ -1,0 +1,68 @@
+{
+	"name": "pi-multi-search",
+	"version": "0.1.0",
+	"description": "Pi extension: multi-index web search. Asks several indexes in parallel, routes each question to the ones worth asking, shapes the query per index, merges the answers with weighted reciprocal rank fusion, and ships an SSRF-checked page reader.",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"pi",
+		"web-search",
+		"search",
+		"metasearch",
+		"rrf",
+		"reciprocal-rank-fusion",
+		"multi-source",
+		"web-fetch",
+		"brave",
+		"tavily",
+		"arxiv",
+		"wikipedia",
+		"hacker-news",
+		"stack-exchange",
+		"duckduckgo"
+	],
+	"license": "MIT",
+	"author": "Kory Schluter",
+	"homepage": "https://github.com/kschluter/pi-multi-search#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kschluter/pi-multi-search.git"
+	},
+	"bugs": {
+		"url": "https://github.com/kschluter/pi-multi-search/issues"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"files": [
+		"src/",
+		"vendor/",
+		"profiles/",
+		"docs/",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"test": "node --test test/*.test.mjs",
+		"prepublishOnly": "node scripts/prepublish.mjs"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"typebox": "*"
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"typebox": "^1.3.34"
+	}
+}

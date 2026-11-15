@@ -1,0 +1,129 @@
+{
+	"$comment": [
+		"The indexes web_search may ask. Every key is documented in docs/pi-multi-search.md.",
+		"",
+		"role          web | reference | papers | discussion | code — routing reads this, and the roles",
+		"              a question earns are asked. `web` is always one of them.",
+		"priority      lower wins, and one index per role is asked by default, so a keyed index takes",
+		"              over from the keyless one and falls back to it when its key is missing.",
+		"weight        0..1: how much the index's own ranking is trusted in the merge. Ranking quality,",
+		"              not who paid. Measured: a 1.0 index beats a 0.8 index's rank 1 for its first 16",
+		"              results, so only lower a weight for an index that deserves to lose every tie.",
+		"limit         results to ask this index for (default: defaults.limit).",
+		"shorten/retry `retryOnEmpty: true` retries once with the topic's core words when the index",
+		"              came back empty (both Algolia and Stack Exchange match terms conjunctively).",
+		"shape         \"none\" opts a source out of query shaping.",
+		"",
+		"**ONE SOURCE IS ENABLED IN THIS FILE: `duckduckgo`, because it is free and needs no key.** A",
+		"fresh install therefore answers, costs nothing and asks for no account — which is the only",
+		"honest default for a package someone just installed. Every other entry is here, defined and",
+		"tested, switched off. To turn one on: set `\"enabled\": true` at the top of its block, and for a",
+		"keyed one put the key in `~/.pi/agent/web-search.env` or your project's `.env` (a key whose",
+		"source is still disabled is reported in the footer rather than silently ignored).",
+		"",
+		"kind absent   a built-in, by id: duckduckgo | wikipedia | hackernews | stackexchange.",
+		"kind json     a URL template ({query}, {limit}; http(s) only) plus `items`, `title`, `link`,",
+		"              `snippet`, `date` — dot paths, where `a|b` means 'this, else that'. `date` takes",
+		"              the first value that looks like an ISO date; prose ages are ignored.",
+		"kind rss|atom a feed: `<item>` or `<entry>`, title, link, and a body under one of four names.",
+		"method POST   sends a JSON `body` whose values are templated the same way, and `\"{limit}\"`",
+		"              becomes a number. A POST source may keep {query} in the body instead of the URL.",
+		"key           the NAME of an environment variable (never a literal); `keyHeader` says where it",
+		"              goes (default `Authorization: Bearer`). The variable is read from the process",
+		"              environment, `envFile` if the profile names one, then ./.env, then",
+		"              ~/.pi/agent/web-search.env. A keyed source with no key is skipped, and the footer",
+		"              names the missing variable.",
+		"",
+		"A bad entry refuses to load, by name, rather than returning nothing forever."
+	],
+	"defaults": {
+		"limit": 5,
+		"timeoutMs": 2500,
+		"perRole": 2
+	},
+	"sources": {
+		"duckduckgo": {
+			"enabled": true,
+			"role": "web",
+			"priority": 50,
+			"weight": 0.7
+		},
+		"wikipedia": {
+			"enabled": false,
+			"$why": "Free and keyless. Off by default so a fresh install asks one index; turn it on for a `reference` opinion on definition questions.",
+			"role": "reference",
+			"weight": 0.55
+		},
+		"hackernews": {
+			"enabled": false,
+			"$why": "Free and keyless. Off by default; turn it on for `discussion` on comparisons and release news.",
+			"role": "discussion",
+			"retryOnEmpty": true,
+			"weight": 0.5
+		},
+		"stackexchange": {
+			"enabled": false,
+			"$why": "Free and keyless. Off by default; this is the one worth turning on first if you ask a lot of code questions — it is the specialist the `code` role routes to.",
+			"role": "code",
+			"retryOnEmpty": true,
+			"weight": 1.0
+		},
+		"arxiv": {
+			"enabled": false,
+			"$why": "Free and keyless. Off by default; turn it on for `papers` if you ask about research.",
+			"role": "papers",
+			"limit": 3,
+			"kind": "atom",
+			"url": "https://export.arxiv.org/api/query?search_query={query}&max_results={limit}",
+			"weight": 1.0
+		},
+		"marginalia": {
+			"enabled": false,
+			"role": "web",
+			"$why": "A keyless HTML endpoint whose shape is not stable; enable only with a parser, not a template.",
+			"kind": "json",
+			"url": "https://api.marginalia.nu/public/search/{query}",
+			"items": "results",
+			"title": "title",
+			"link": "url",
+			"snippet": "description"
+		},
+		"brave": {
+			"enabled": false,
+			"$why": "Keyed, and worth it: 2 000 searches/month free. Put BRAVE_API_KEY in ~/.pi/agent/web-search.env or ./.env, then set \"enabled\": true here.",
+			"role": "web",
+			"priority": 10,
+			"kind": "json",
+			"url": "https://api.search.brave.com/res/v1/web/search?q={query}&count={limit}",
+			"key": "BRAVE_API_KEY",
+			"keyHeader": "X-Subscription-Token",
+			"items": "web.results",
+			"title": "title",
+			"link": "url",
+			"snippet": "description",
+			"date": "page_age|age",
+			"weight": 1.0
+		},
+		"tavily": {
+			"enabled": false,
+			"$why": "Keyed. Put TAVILY_API_KEY in ~/.pi/agent/web-search.env or ./.env, then set \"enabled\": true here. `search_depth: advanced` costs 2 credits instead of 1.",
+			"role": "web",
+			"priority": 20,
+			"weight": 0.9,
+			"kind": "json",
+			"method": "POST",
+			"url": "https://api.tavily.com/search",
+			"body": {
+				"query": "{query}",
+				"max_results": "{limit}",
+				"search_depth": "basic"
+			},
+			"key": "TAVILY_API_KEY",
+			"items": "results",
+			"title": "title",
+			"link": "url",
+			"snippet": "content",
+			"date": "published_date"
+		}
+	}
+}

@@ -1,0 +1,35 @@
+{
+	"$comment": [
+		"The full fan-out: every index in the catalog switched on, for a terminal session where you",
+		"want the whole thing. The shipped default is `duckduckgo` alone (free, no key); this is what",
+		"the other six look like enabled, and it is the file the README's configuration section points",
+		"at.",
+		"",
+		"Merged over profiles/default.json by source id **and then by field**, so a block here names",
+		"only what it changes — `\"brave\": { \"enabled\": true }` is enough and the url, key and headers",
+		"come from the base. Use it with:",
+		"",
+		"    WEB_SEARCH_PROFILE=cli pi        # brave and tavily still need a key to answer",
+		"",
+		"Resolution: $WEB_SEARCH_PROFILE, then ./.pi/web-search.json, then ~/.pi/agent/web-search.json,",
+		"then profiles/default.json. See src/profiles.mjs and docs/pi-multi-search.md."
+	],
+	"defaults": {
+		"perRole": 2,
+		"limit": 6,
+		"timeoutMs": 4000,
+		"maxResults": 10
+	},
+	"tools": {
+		"web_search": true,
+		"web_fetch": true
+	},
+	"sources": {
+		"wikipedia": { "enabled": true },
+		"hackernews": { "enabled": true },
+		"stackexchange": { "enabled": true },
+		"arxiv": { "enabled": true },
+		"brave": { "enabled": true },
+		"tavily": { "enabled": true }
+	}
+}
