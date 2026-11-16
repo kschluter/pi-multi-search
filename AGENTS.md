@@ -193,6 +193,29 @@ node scripts/prepublish.mjs               # the six checks above, by hand
 npm publish                               # prepublishOnly runs them again, then builds the tarball
 ```
 
+## Publishing when npm demands a second factor
+
+An account with 2FA cannot `npm publish` from a CLI without either a granular token that **bypasses 2FA** or
+a staged approval in the browser. Two things about that cost an hour and are worth knowing before the next
+release:
+
+- **A token made with "Read and write (stage only)" does not fail.** `npm publish` prints
+  `+ pi-multi-search@0.1.0` and exits 0, the registry answers **202**, and it records version `0.0.0-stage`:
+  a stub, 2 files, "Temporary package placeholder for staged publishing". It looks like a successful
+  release and nothing is installable. Read the HTTP code in the debug log when a publish seems too easy.
+  It is **201** for a real one.
+- **A bypass-2FA token cannot unpublish.** The registry answers 403 ("Granular access tokens that bypass
+  two-factor authentication may not perform this action"), so a placeholder like that is removed in the
+  browser, not from the CLI.
+
+The token line in `~/.npmrc` is `//registry.npmjs.org/:_authToken=npm_…`: two slashes, which scope the
+credential to one registry, not a comment. Editing it by hand is how a token ends up pasted twice and
+every publish answers 401; `npm config set` writes it correctly.
+
+**From January 2027 npm disables bypass-2FA publishing.** The release path then becomes Trusted Publishing
+from CI, or `npm stage publish` plus an approval in the browser. This section is what to rewrite when that
+lands, and the tag and commit already pushed do not change.
+
 ## How people get it
 
 `pi install npm:pi-multi-search` writes a declaration to their settings, and the tools then exist in every
