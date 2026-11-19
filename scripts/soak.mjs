@@ -31,10 +31,20 @@
  *   node scripts/soak.mjs --reader           # the page-reader set instead
  *   node scripts/soak.mjs --query "…" --render   # one query, with the text a model would read
  *   node scripts/soak.mjs --json             # raw rows, for a diff between runs
+ *   node scripts/soak.mjs --reps 3 --out /tmp/run.json  # 3 reps, pure-JSON rows to a file
+ *   node scripts/soak.mjs --queries ~/bench/queries.json  # drive another team's query set
+ *   node scripts/soak.mjs --pause 9000          # wait between queries — for sources that rate-limit
+ *
+ * **A profile that cannot ask a role, or does not contain an id, is N/A, not a failure.** Expectations
+ * here are written against the shipped sources; a consumer profile (a local SearXNG, say) legitimately
+ * enables a different set, so a role with no enabled source can never be planned and a foreign id can
+ * never appear. Reporting those red would bury a real regression in stale expectations.
  *
  * Nothing here prints a key value: `details.keys` carries names, a path and warnings.
  */
 import { homedir } from 'node:os';
+import { readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const argv = process.argv.slice(2);
@@ -153,21 +163,51 @@ async function main() {
 	if (probe.details.skipped?.length) {
 		console.log(`skipped   ${probe.details.skipped.map((s) => `${s.id} (${s.why})`).join(', ')}`);
 	}
+
+	// **What this profile can actually ask.** Used only to mark expectations N/A (see the header): an
+	// expectation about a role or an id this profile does not have is not a defect in the run.
+	const { loadProfile } = await import('../src/profiles.mjs');
+	const { resolveSources } = await import('../src/sources.mjs');
+	const available = resolveSources(loadProfile({ agentDir: process.env.PI_CODING_AGENT_DIR }), seen.env ?? {}).available;
+	const ctx = {
+		ids: new Set(available.map((source) => source.id)),
+		roles: new Set(available.map((source) => source.role ?? 'web'))
+	};
+	console.log(`available ${[...ctx.ids].join(', ') || 'none'} · roles ${[...ctx.roles].join(', ') || 'none'}`);
 	console.log('');
 
 	if (flag('reader')) return reader(tools);
-	return queries(tools);
+	return queries(tools, ctx);
 }
 
-async function queries(tools) {
+async function queries(tools, ctx) {
 	const one = value('query');
-	const set = one ? [{ query: one, roles: [], notRoles: [] }] : QUERIES;
+	// **A caller's own query set, for measuring rather than regression-testing.** `--queries` takes the
+	// same shape with `gold` instead of `roles`, so a benchmark's list can be driven through this same
+	// pipeline — one code path, so the numbers are what a model would actually read.
+	const fromFile = value('queries');
+	const set = one
+		? [{ query: one, roles: [], notRoles: [] }]
+		: fromFile
+			? JSON.parse(readFileSync(fromFile, 'utf8'))
+			: QUERIES;
+	// **Repeat the set, because SearXNG is not deterministic.** It fans out to ~80 engines whose
+	// availability changes per run (`unresponsive_engines` already lists suspended ones), so one shot per
+	// query is a coin flip and a benchmark built on it does not reproduce.
+	const reps = Math.max(1, Math.min(10, Number(value('reps', '1')) || 1));
+	// **Spacing is not politeness, it is measurement validity.** DuckDuckGo answers a challenged client
+	// with HTTP 202 and an anomaly page (see vendor/duckduckgo.ts), so a burst of queries makes the
+	// *harness* the thing under test: measured 2026-11-19, 12 back-to-back queries turned a working
+	// engine into 9 failures that looked like a dead default.
+	const pause = Math.max(0, Number(value('pause', '0')) || 0);
+	const label = process.env.WEB_SEARCH_PROFILE ?? 'shipped';
 	const rows = [];
 	let failures = 0;
 	let gaps = 0;
+	let na = 0;
 
-	for (const item of set) {
-		console.log(`\x1b[1m${item.query}\x1b[0m`);
+	for (let rep = 1; rep <= reps; rep++) for (const item of set) {
+		console.log(`\x1b[1m${item.query}\x1b[0m${reps > 1 ? dim(`   rep ${rep}/${reps}`) : ''}`);
 		const started = Date.now();
 		const run = await call(tools, 'web_search', { query: item.query });
 		const ms = Date.now() - started;
@@ -180,9 +220,23 @@ async function queries(tools) {
 		const planned = d.plan.map((entry) => entry.role);
 		const checks = [];
 
-		for (const role of item.roles ?? []) checks.push([planned.includes(role), `role "${role}" planned (got ${planned.join(', ') || 'none'})`]);
+		for (const role of item.roles ?? []) {
+			if (!ctx.roles.has(role)) {
+				na++;
+				console.log(`  ${dim(`N/A   role "${role}" — no enabled source in this profile has it`)}`);
+				continue;
+			}
+			checks.push([planned.includes(role), `role "${role}" planned (got ${planned.join(', ') || 'none'})`]);
+		}
 		for (const role of item.notRoles ?? []) checks.push([!planned.includes(role), `role "${role}" not planned`]);
-		for (const id of item.present ?? []) checks.push([d.results.some((row) => row.sources.includes(id)), `${id} appears in the list`]);
+		for (const id of item.present ?? []) {
+			if (!ctx.ids.has(id)) {
+				na++;
+				console.log(`  ${dim(`N/A   ${id} — not an enabled source in this profile`)}`);
+				continue;
+			}
+			checks.push([d.results.some((row) => row.sources.includes(id)), `${id} appears in the list`]);
+		}
 		// **The seam, on real data:** an index that answered but contributes no row was asked for nothing.
 		for (const id of d.answered) {
 			const at = d.results.findIndex((row) => row.sources.includes(id));
@@ -214,6 +268,8 @@ async function queries(tools) {
 		else for (const row of d.results.slice(0, one ? 8 : 3)) console.log(dim(`    ${row.title} [${row.sources.join(', ')}]`));
 
 		rows.push({
+			label,
+			rep,
 			query: item.query,
 			roles: d.roles,
 			planned: d.plan.map((p) => ({ id: p.id, role: p.role, query: p.query })),
@@ -226,13 +282,22 @@ async function queries(tools) {
 			checks: checks.map(([passed, label]) => ({ ok: passed, label }))
 		});
 		console.log('');
+		if (pause) await new Promise((resolve) => setTimeout(resolve, pause));
 	}
 
 	if (flag('json')) {
 		console.log(JSON.stringify(rows, null, 2));
-	} else {
+	}
+	const out = value('out');
+	if (out) {
+		await writeFile(out, `${JSON.stringify(rows, null, 2)}\n`);
+		console.log(dim(`rows written to ${out}`));
+	}
+	if (!flag('json')) {
 		const total = rows.reduce((n, row) => n + row.checks.length, 0);
-		console.log(`${total - failures - gaps}/${total} checks passed across ${rows.length} queries (${gaps} known gap${gaps === 1 ? '' : 's'})`);
+		console.log(
+			`${total - failures - gaps}/${total} checks passed across ${rows.length} queries (${gaps} known gap${gaps === 1 ? '' : 's'}, ${na} N/A)`
+		);
 	}
 	process.exitCode = failures ? 1 : 0;
 }

@@ -4,7 +4,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html), where in `0.x` a minor is what a breaking
 change rides on.
 
-## [0.1.0] - 2026-11-15
+## [Unreleased]
+
+### Added
+
+- **`scripts/soak.mjs` takes `--queries`, `--reps` and `--out`, and marks N/A instead of red.** Three
+  changes, all for measuring rather than regression-testing. `--queries <file>` drives a caller's own
+  query list through the same pipeline (so a benchmark's set does not need its own harness, and cannot
+  drift from what a model reads); `--reps N` repeats the set, because SearXNG fans out to ~80 engines
+  whose availability changes per run and a single shot is a coin flip; `--out <file>` writes pure JSON
+  rows, where `--json` interleaves them with the human report. **N/A, not a failure, when the profile is
+  the reason:** a role with no enabled source can never be planned and a foreign id can never appear, so
+  an expectation about either is skipped and counted as N/A — the same reasoning the file already used
+  for `--profile default`, generalized, so one table holds for the shipped default, `cli`, and a
+  consumer's profile. `npm test` is untouched (still network-free per rule 9).
+
 
 First release.
 
